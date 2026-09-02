@@ -9,8 +9,13 @@ from yt_dlp import YoutubeDL
 DOWNLOAD_DIR = Path("downloads")
 
 
-def build_options(download_type: str) -> dict:
-    """Build yt-dlp options for 'video' or 'audio' download."""
+def build_options(download_type: str, save_as_wav: bool = False) -> dict:
+    """Build yt-dlp options for 'video' or 'audio' download.
+
+    For 'audio', the best audio track is kept as-is (no re-encode) by default,
+    since re-encoding an already lossy-compressed stream (e.g. to mp3) only
+    degrades it further. Set save_as_wav to decode it losslessly to WAV instead.
+    """
     options = {
         "outtmpl": str(DOWNLOAD_DIR / "%(title)s.%(ext)s"),
         "noplaylist": True,
@@ -18,14 +23,12 @@ def build_options(download_type: str) -> dict:
     }
 
     if download_type == "audio":
-        options.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{
+        options["format"] = "bestaudio/best"
+        if save_as_wav:
+            options["postprocessors"] = [{
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
-        })
+                "preferredcodec": "wav",
+            }]
     else:
         options.update({
             "format": "bestvideo+bestaudio/best",
@@ -35,12 +38,12 @@ def build_options(download_type: str) -> dict:
     return options
 
 
-def download(url: str, download_type: str = "video") -> bool:
+def download(url: str, download_type: str = "video", save_as_wav: bool = False) -> bool:
     """Download a single YouTube URL. Returns True on success."""
     DOWNLOAD_DIR.mkdir(exist_ok=True)
 
     try:
-        with YoutubeDL(build_options(download_type)) as ydl:
+        with YoutubeDL(build_options(download_type, save_as_wav)) as ydl:
             print(f"\n--- ダウンロード開始: {url} ---")
             ydl.download([url])
             print("--- 完了しました！ ---")
@@ -50,7 +53,7 @@ def download(url: str, download_type: str = "video") -> bool:
         return False
 
 
-def prompt_for_input() -> tuple[str, str]:
+def prompt_for_input() -> tuple[str, str, bool]:
     url = input("動画のURLを入力してください: ").strip()
     if not url:
         print("URLが入力されていません。終了します。")
@@ -58,13 +61,19 @@ def prompt_for_input() -> tuple[str, str]:
 
     choice = input("モードを選択してください (1: 動画 / 2: 音声のみ): ").strip()
     mode = "audio" if choice == "2" else "video"
-    return url, mode
+
+    save_as_wav = False
+    if mode == "audio":
+        wav_choice = input("WAV形式で保存しますか？ (y/N): ").strip().lower()
+        save_as_wav = wav_choice == "y"
+
+    return url, mode, save_as_wav
 
 
 def main() -> None:
     print("=== YouTube CLI Downloader ===")
-    url, mode = prompt_for_input()
-    success = download(url, mode)
+    url, mode, save_as_wav = prompt_for_input()
+    success = download(url, mode, save_as_wav)
     sys.exit(0 if success else 1)
 
 
